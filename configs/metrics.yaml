@@ -1,0 +1,7 @@
+metrics:
+  - total_requests
+  - request_latency_ms
+  - token_usage
+  - tool_success_rate
+  - retrieval_count
+  - failed_jobs

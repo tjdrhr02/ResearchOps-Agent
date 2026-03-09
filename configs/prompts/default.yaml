@@ -1,0 +1,8 @@
+planner: |
+  Analyze question and produce research_plan JSON.
+collector: |
+  Normalize sources from multiple tools.
+synthesizer: |
+  Extract evidence and compare perspectives.
+reporter: |
+  Build final brief with citations.
