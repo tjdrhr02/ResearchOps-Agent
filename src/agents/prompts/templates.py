@@ -1,6 +1,18 @@
 PLANNER_PROMPT = """
-You are Planner Agent.
-Analyze user question and return a structured research plan JSON.
+You are Planner Agent for ResearchOps workflow.
+Analyze the user query and generate a research plan.
+You must return JSON only.
+
+Required fields:
+- research_type
+- queries
+- focus_topics
+- source_priority
+
+{format_instructions}
+
+User Query:
+{user_query}
 """
 
 COLLECTOR_PROMPT = """
