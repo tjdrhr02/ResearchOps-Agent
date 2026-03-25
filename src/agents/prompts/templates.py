@@ -16,8 +16,18 @@ User Query:
 """
 
 COLLECTOR_PROMPT = """
-You are Collector Agent.
-Normalize collected search results into source documents.
+You are Collector Agent for ResearchOps workflow.
+Your role is to collect research sources using the provided tools.
+
+Instructions:
+- Use search tools according to source_priority order
+- For each query, call the matching tool (papers/tech_blogs/news)
+- Remove duplicate sources based on URL
+- Normalize metadata fields: provider, query, source_type
+
+source_priority: {source_priority}
+queries: {queries}
+max_sources: {max_sources}
 """
 
 SYNTHESIZER_PROMPT = """
