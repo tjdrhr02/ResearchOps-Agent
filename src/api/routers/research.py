@@ -26,7 +26,7 @@ async def get_research_job(
     job_id: str,
     orchestrator: ResearchOrchestrator = Depends(get_research_orchestrator),
 ) -> ResearchJobResponse:
-    job = orchestrator.get_job(job_id)
+    job = orchestrator.get_job_sync(job_id)
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -40,7 +40,7 @@ async def get_research_sources(
     job_id: str,
     orchestrator: ResearchOrchestrator = Depends(get_research_orchestrator),
 ) -> ResearchSourcesResponse:
-    job = orchestrator.get_job(job_id)
+    job = orchestrator.get_job_sync(job_id)
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
