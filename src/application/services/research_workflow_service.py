@@ -23,7 +23,19 @@ class ResearchWorkflowService:
         collector_output = await self.collector.run(planner_output=planner_output, max_sources=max_sources)
         indexed = await self.retriever.index_documents(collector_output.documents)
         self.metrics.increment("retrieval_count", indexed)
-        evidence = await self.retriever.retrieve(query=user_query, k=min(5, max_sources))
-        synthesis = await self.synthesizer.run(collected=collector_output, retrieved=evidence)
+
+        # 멀티쿼리 retrieval: Planner가 생성한 모든 쿼리로 검색
+        plan = planner_output.plan
+        evidence = await self.retriever.retrieve_multi_query(
+            queries=plan.queries or [user_query],
+            k=min(5, max_sources),
+        )
+
+        synthesis = await self.synthesizer.run(
+            collected=collector_output,
+            retrieved=evidence,
+            research_topic=plan.question,
+            research_objective=plan.objective,
+        )
         brief = await self.reporter.run(planner_output=planner_output, synthesis=synthesis)
         return WorkflowResult(brief=brief, sources=collector_output.documents)

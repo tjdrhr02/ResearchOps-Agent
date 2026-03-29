@@ -15,6 +15,7 @@ class CollectorOutput(BaseModel):
 
 
 class SynthesizerOutput(BaseModel):
+    trend_summary: str = ""
     claims: list[str] = Field(default_factory=list)
     comparisons: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
