@@ -9,11 +9,19 @@ from src.domain.ports.tool_port import ToolPort
 
 
 class ResearchWorkflowService:
-    def __init__(self, tools: list[ToolPort], retriever: RetrieverPort, metrics: MetricsPort) -> None:
-        self.planner = PlannerAgent()
+    def __init__(
+        self,
+        tools: list[ToolPort],
+        retriever: RetrieverPort,
+        metrics: MetricsPort,
+        planner_llm=None,
+        synthesizer_llm=None,
+        reporter_llm=None,
+    ) -> None:
+        self.planner = PlannerAgent(llm=planner_llm)
         self.collector = CollectorAgent(tools=tools)
-        self.synthesizer = SynthesizerAgent()
-        self.reporter = ReporterAgent()
+        self.synthesizer = SynthesizerAgent(llm=synthesizer_llm)
+        self.reporter = ReporterAgent(llm=reporter_llm)
         self.retriever = retriever
         self.metrics = metrics
 
@@ -37,5 +45,9 @@ class ResearchWorkflowService:
             research_topic=plan.question,
             research_objective=plan.objective,
         )
-        brief = await self.reporter.run(planner_output=planner_output, synthesis=synthesis)
+        brief = await self.reporter.run(
+            planner_output=planner_output,
+            synthesis=synthesis,
+            source_count=len(collector_output.documents),
+        )
         return WorkflowResult(brief=brief, sources=collector_output.documents)
