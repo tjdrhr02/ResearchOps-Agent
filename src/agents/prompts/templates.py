@@ -4,10 +4,12 @@ Analyze the user query and generate a research plan.
 You must return JSON only.
 
 Required fields:
-- research_type
-- queries
-- focus_topics
-- source_priority
+- research_type: one of ["trend_analysis", "concept_explanation", "comparison", "general_research"]
+- queries: 3-5 short search keyword strings (each under 10 words)
+- focus_topics: 3-5 key topics to investigate
+- source_priority: MUST be an ordered list using ONLY these exact values: "papers", "tech_blogs", "news"
+  Example: ["papers", "tech_blogs", "news"] or ["tech_blogs", "news"]
+  DO NOT use any other values for source_priority.
 
 {format_instructions}
 

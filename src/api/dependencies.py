@@ -11,6 +11,7 @@ FastAPI의 Depends() 패턴과 @lru_cache를 결합하여
             └─ ResearchWorkflowService
                 └─ ResearchOrchestrator
 """
+import os
 from functools import lru_cache
 
 from src.application.orchestrators.research_orchestrator import ResearchOrchestrator
@@ -74,6 +75,18 @@ def get_ingestion_pipeline() -> IngestionPipeline:
     )
 
 
+def _build_chat_llm(model: str):
+    """
+    GOOGLE_API_KEY 환경변수가 설정된 경우 ChatGoogleGenerativeAI 인스턴스를 반환한다.
+    키가 없으면 None을 반환해 각 에이전트의 폴백 모드가 작동한다.
+    """
+    api_key = os.environ.get("GOOGLE_API_KEY")
+    if not api_key:
+        return None
+    from langchain_google_genai import ChatGoogleGenerativeAI
+    return ChatGoogleGenerativeAI(model=model, temperature=0.3, google_api_key=api_key)
+
+
 @lru_cache
 def get_research_orchestrator() -> ResearchOrchestrator:
     note_store = get_note_store()
@@ -97,6 +110,9 @@ def get_research_orchestrator() -> ResearchOrchestrator:
         tools=tools,
         retriever=retriever,
         metrics=get_metrics_collector(),
+        planner_llm=_build_chat_llm("gemini-2.5-flash"),
+        synthesizer_llm=_build_chat_llm("gemini-2.5-flash"),
+        reporter_llm=_build_chat_llm("gemini-2.5-flash"),
     )
     return ResearchOrchestrator(workflow=workflow, metrics=get_metrics_collector())
 
