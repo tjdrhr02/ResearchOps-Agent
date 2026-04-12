@@ -8,7 +8,7 @@ from src.domain.models.source_document import SourceDocument
 class ResearchRunResponse(BaseModel):
     job_id: str
     status: str
-    brief: ResearchBrief
+    message: str
 
 
 class ResearchJobResponse(BaseModel):

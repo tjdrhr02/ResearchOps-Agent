@@ -49,6 +49,72 @@ class ResearchOrchestrator:
     # 공개 인터페이스
     # ──────────────────────────────────────────────────────────────
 
+    async def submit(self, user_query: str, max_sources: int) -> ResearchJob:
+        """
+        연구 작업을 백그라운드로 제출하고 pending 상태의 Job을 즉시 반환한다.
+
+        클라이언트는 반환된 job_id로 GET /research/{job_id}를 polling해
+        completed 또는 failed 상태가 될 때까지 결과를 확인한다.
+        """
+        job = ResearchJob(job_id=str(uuid4()), query=user_query)
+        await self._store_job(job)
+
+        logger.info(
+            "orchestrator_submit job_id=%s query=%r max_sources=%s",
+            job.job_id,
+            user_query[:60],
+            max_sources,
+        )
+
+        asyncio.create_task(
+            self._run_workflow(job=job, user_query=user_query, max_sources=max_sources),
+            name=f"workflow-{job.job_id}",
+        )
+        return job
+
+    async def _run_workflow(self, job: ResearchJob, user_query: str, max_sources: int) -> None:
+        """백그라운드 태스크: 워크플로우를 실행하고 job 상태를 갱신한다."""
+        t0 = time.perf_counter()
+        job.mark_running()
+
+        try:
+            result: WorkflowResult = await self.workflow.run(
+                user_query=user_query,
+                max_sources=max_sources,
+            )
+            elapsed_ms = _ms(t0)
+            job.mark_completed(
+                brief=result.brief,
+                sources=result.sources,
+                elapsed_ms=elapsed_ms,
+            )
+            for step in result.trace.steps:
+                job.add_step(
+                    step=step.step,
+                    status=step.status,
+                    elapsed_ms=step.elapsed_ms,
+                    detail=step.detail,
+                    error=step.error,
+                )
+            self.metrics.observe_latency("request_latency_ms", elapsed_ms)
+            logger.info(
+                "orchestrator_complete job_id=%s elapsed_ms=%.1f trace=[%s]",
+                job.job_id,
+                elapsed_ms,
+                result.trace.summary(),
+            )
+        except Exception as exc:
+            elapsed_ms = _ms(t0)
+            job.mark_failed(error_message=str(exc), elapsed_ms=elapsed_ms)
+            self.metrics.increment("failed_jobs")
+            self.metrics.observe_latency("request_latency_ms", elapsed_ms)
+            logger.error(
+                "orchestrator_failed job_id=%s error=%s elapsed_ms=%.1f",
+                job.job_id,
+                exc,
+                elapsed_ms,
+            )
+
     async def run(self, user_query: str, max_sources: int) -> ResearchJob:
         """
         새 연구 작업을 생성하고 전체 워크플로우를 실행한다.
