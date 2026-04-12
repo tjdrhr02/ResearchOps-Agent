@@ -36,4 +36,8 @@ htmlcov/
 .cursor/
 
 # md
-*.md
+ARCHITECTURE.md
+AI_CONTEXT.md
+DEVELOPMENT_GUIDE.md
+PROJECT_OVERVIEW.md
+PROMPTS.md
