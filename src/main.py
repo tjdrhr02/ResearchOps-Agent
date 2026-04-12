@@ -1,4 +1,7 @@
+from dotenv import load_dotenv
 from fastapi import FastAPI
+
+load_dotenv()  # 프로젝트 루트의 .env 파일을 자동 로드
 
 from src.api.routers.notes import router as notes_router
 from src.api.routers.research import router as research_router
