@@ -1,19 +1,26 @@
 """
 search_tech_blogs Tool.
 
-기술 블로그 검색 Tool.
+기술 블로그 검색 Tool — DuckDuckGo 텍스트 검색 연동.
 입력: query(검색어), limit(결과 수)
 출력: items(SourceDocument 목록)
 """
+import asyncio
+import hashlib
 import logging
 from typing import Any
-from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
 from src.tools.base.tool_contract import ResearchBaseTool
 
 logger = logging.getLogger(__name__)
+
+_TECH_DOMAINS = (
+    "site:medium.com OR site:towardsdatascience.com OR site:dev.to "
+    "OR site:blog.research.google OR site:ai.googleblog.com "
+    "OR site:openai.com/blog OR site:huggingface.co/blog"
+)
 
 
 class SearchTechBlogsInput(BaseModel):
@@ -28,7 +35,7 @@ class SearchTechBlogsTool(ResearchBaseTool):
         "Returns engineering posts from sources like engineering blogs and Medium."
     )
     args_schema: type[BaseModel] = SearchTechBlogsInput
-    timeout_seconds: float = 8.0
+    timeout_seconds: float = 12.0
     retry_count: int = 2
 
     @property
@@ -40,29 +47,40 @@ class SearchTechBlogsTool(ResearchBaseTool):
 
     async def _execute(self, payload: dict[str, Any]) -> dict[str, Any]:
         query = payload["query"]
-        limit = int(payload.get("limit", 3))
-        limit = max(1, min(limit, 10))
+        limit = max(1, min(int(payload.get("limit", 3)), 10))
 
         logger.info("search_tech_blogs_execute query=%s limit=%s", query, limit)
+
+        search_query = f"{query} {_TECH_DOMAINS}"
+
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(None, self._ddg_search, search_query, limit)
+
         items = []
-        for i in range(limit):
-            sid = str(uuid4())
+        for r in results:
+            url = r.get("href", "") or r.get("url", "")
+            title = r.get("title", "")
+            body = r.get("body", "") or r.get("snippet", "")
+            source_id = hashlib.md5(url.encode()).hexdigest()
             items.append(
                 {
-                    "source_id": sid,
+                    "source_id": source_id,
                     "source_type": "tech_blog",
-                    "title": f"[Blog {i + 1}] Engineering perspective on: {query}",
-                    "url": f"https://engineering.example.com/posts/{sid[:8]}",
-                    "content": (
-                        f"In this post, we share our team's experience with {query}. "
-                        f"We cover implementation details, lessons learned, and best practices."
-                    ),
+                    "title": title,
+                    "url": url,
+                    "content": body,
                     "metadata": {
-                        "provider": "techblog-mock",
+                        "provider": "duckduckgo",
                         "query": query,
-                        "rank": str(i + 1),
                     },
                 }
             )
+
         logger.info("search_tech_blogs_done query=%s found=%s", query, len(items))
         return {"items": items}
+
+    @staticmethod
+    def _ddg_search(query: str, limit: int) -> list[dict]:
+        from ddgs import DDGS
+        with DDGS() as ddgs:
+            return list(ddgs.text(query, max_results=limit))

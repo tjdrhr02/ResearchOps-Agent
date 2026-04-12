@@ -1,18 +1,30 @@
 """
 fetch_article_content Tool.
 
-URL에서 기사 본문을 가져오는 Tool.
+URL에서 기사 본문을 가져오는 Tool — httpx + BeautifulSoup4 연동.
 입력: url(기사 URL)
 출력: content(본문 텍스트), title, word_count
 """
 import logging
 from typing import Any
 
+import httpx
+from bs4 import BeautifulSoup
 from pydantic import BaseModel, Field
 
 from src.tools.base.tool_contract import ResearchBaseTool
 
 logger = logging.getLogger(__name__)
+
+_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+}
 
 
 class FetchArticleContentInput(BaseModel):
@@ -45,18 +57,40 @@ class FetchArticleContentTool(ResearchBaseTool):
 
         logger.info("fetch_article_execute url=%s", url)
 
-        # 실제 환경에서는 httpx/playwright 등으로 교체한다.
-        mock_body = (
-            f"This article from {url} covers recent developments. "
-            "The author presents multiple perspectives, citing empirical studies. "
-            "Key findings include improved efficiency, reduced latency, and broader adoption."
-        )
-        word_count = len(mock_body.split())
+        async with httpx.AsyncClient(
+            headers=_HEADERS,
+            follow_redirects=True,
+            timeout=13.0,
+        ) as client:
+            resp = await client.get(url)
+            resp.raise_for_status()
 
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        # 제목 추출
+        title = ""
+        if soup.title:
+            title = soup.title.get_text(strip=True)
+
+        # 본문 추출: article > main > body 순서로 시도
+        content = ""
+        for selector in ("article", "main", "[role='main']"):
+            tag = soup.select_one(selector)
+            if tag:
+                content = tag.get_text(separator=" ", strip=True)
+                break
+
+        if not content:
+            # 폴백: 모든 <p> 태그 텍스트 결합
+            paragraphs = soup.find_all("p")
+            content = " ".join(p.get_text(strip=True) for p in paragraphs if p.get_text(strip=True))
+
+        word_count = len(content.split())
         logger.info("fetch_article_done url=%s word_count=%s", url, word_count)
+
         return {
-            "title": f"Article from {url}",
-            "content": mock_body,
+            "title": title,
+            "content": content[:8000],  # 토큰 제한을 위해 최대 8000자
             "word_count": word_count,
             "url": url,
         }

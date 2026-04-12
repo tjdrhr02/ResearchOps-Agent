@@ -22,7 +22,7 @@ from src.infrastructure.cache.redis_client import InMemoryRedisClient
 from src.observability.metrics.collector import MetricsCollector
 from src.rag.chunking.chunker import SemanticChunker
 from src.rag.citation.citation_builder import CitationBuilder
-from src.rag.embedding.embedder import HashEmbedder
+from src.rag.embedding.embedder import HashEmbedder, LocalEmbedder
 from src.rag.ingestion.ingestion_pipeline import IngestionPipeline
 from src.rag.ingestion.ingestor import DocumentIngestor
 from src.rag.retrieval.retriever import Retriever
@@ -46,14 +46,16 @@ def get_metrics_collector() -> MetricsPort:
 
 
 @lru_cache
-def get_embedder() -> HashEmbedder:
+def get_embedder():
     """
-    임베딩 서비스. 운영 환경에서는 아래처럼 교체한다:
-      from langchain_openai import OpenAIEmbeddings
-      from src.rag.embedding.embedder import EmbeddingService
-      return EmbeddingService(model=OpenAIEmbeddings())
+    LocalEmbedder(sentence-transformers, 384차원, API 키 불필요).
+    sentence-transformers 미설치 시 HashEmbedder(개발용 stub)로 폴백.
     """
-    return HashEmbedder()
+    try:
+        return LocalEmbedder()
+    except Exception as e:
+        logger.warning("local_embedder_unavailable error=%s — falling back to HashEmbedder", e)
+        return HashEmbedder()
 
 
 @lru_cache
