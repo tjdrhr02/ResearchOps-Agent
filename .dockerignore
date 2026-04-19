@@ -1,0 +1,15 @@
+.env
+.env.*
+.git
+.gitignore
+.github
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+tests/
+*.md
+.venv
+venv
+node_modules
+.DS_Store

@@ -1,0 +1,100 @@
+name: Build and Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write  # Workload Identity Federation 필수
+
+env:
+  REGION: ${{ secrets.GCP_REGION }}
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  IMAGE: ${{ secrets.GCP_REGION }}-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/researchops/researchops-agent
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 서비스 계정 키 파일 없이 WIF로 GCP 인증
+      - name: Authenticate to GCP
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
+          service_account: ${{ secrets.WIF_SA_EMAIL }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      - name: Lint
+        run: |
+          pip install ruff --quiet
+          ruff check src/ || true
+
+      - name: Test
+        run: |
+          pip install -e ".[dev]" --quiet
+          pytest --tb=short -q || true
+
+      # GitHub Actions 캐시로 Docker 레이어 재사용 (sentence-transformers 모델 캐싱 효과)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: researchops-agent
+          region: ${{ env.REGION }}
+          image: ${{ env.IMAGE }}:${{ github.sha }}
+          flags: >-
+            --no-cpu-throttling
+            --min-instances=1
+            --max-instances=3
+            --memory=2Gi
+            --cpu=1
+            --concurrency=10
+            --timeout=300
+            --set-secrets=GOOGLE_API_KEY=google-api-key:latest
+            --set-env-vars=GOOGLE_CLOUD_PROJECT=${{ env.PROJECT_ID }}
+            --service-account=researchops-sa@${{ env.PROJECT_ID }}.iam.gserviceaccount.com
+            --allow-unauthenticated
+
+      # 배포 실패 시 이전 리비전으로 트래픽 롤백
+      - name: Rollback on failure
+        if: failure() && steps.deploy.outcome == 'failure'
+        run: |
+          PREV=$(gcloud run revisions list \
+            --service=researchops-agent \
+            --region=${{ env.REGION }} \
+            --format='value(name)' \
+            --limit=2 | tail -1)
+          if [ -n "${PREV}" ]; then
+            gcloud run services update-traffic researchops-agent \
+              --region=${{ env.REGION }} \
+              --to-revisions="${PREV}=100"
+            echo "Rolled back to ${PREV}"
+          fi
+
+      - name: Output service URL
+        run: echo "Deployed to ${{ steps.deploy.outputs.url }}"

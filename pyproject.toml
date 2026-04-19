@@ -15,6 +15,8 @@ dependencies = [
   "httpx>=0.28.0",
   "ddgs>=9.0.0",
   "sentence-transformers>=3.0.0",
+  "python-json-logger>=3.0.0",
+  "google-cloud-monitoring>=2.0.0",
 ]
 
 [project.optional-dependencies]

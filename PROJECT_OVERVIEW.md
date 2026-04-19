@@ -57,10 +57,13 @@ ResearchOps Agent는 다음 기능을 제공한다.
 
 다음 Agent로 구성된다.
 
-- **PlannerAgent** — 쿼리 분석, 검색 전략 및 source_priority 결정
-- **CollectorAgent** — Tool 기반 실제 데이터 수집
-- **SynthesizerAgent** — 수집 데이터 + RAG 증거 분석, 관점 비교
-- **ReporterAgent** — 최종 Research Brief 생성
+- **PlannerAgent** — 쿼리 분석, 검색 전략 및 source_priority 결정 (LLM 사용)
+- **CollectorAgent** — Tool 기반 실제 데이터 수집 (**LLM 미사용** — 결정론적 실행)
+- **SynthesizerAgent** — 수집 데이터 + RAG 증거 분석, 관점 비교 (LLM 사용)
+- **ReporterAgent** — 최종 Research Brief 생성 (LLM 사용)
+
+각 Agent의 Prompt는 역할 선언 / 입출력 / Guardrails / chain-of-thought 구조로 설계되어 있다.
+→ `PROMPTS.md` 참조
 
 ### 3 Tool 기반 실제 데이터 수집
 
