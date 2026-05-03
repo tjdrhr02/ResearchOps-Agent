@@ -9,12 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends gcc \
 COPY pyproject.toml .
 
 # build-system 없는 pyproject.toml 대응: tomllib(stdlib)로 의존성 추출 후 설치
-RUN python3 -c "
-import tomllib, subprocess, sys
-with open('pyproject.toml', 'rb') as f:
-    deps = tomllib.load(f)['project']['dependencies']
-subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--no-cache-dir'] + deps)
-"
+RUN python3 -c "import tomllib,subprocess,sys; deps=tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']; subprocess.check_call([sys.executable,'-m','pip','install','--no-cache-dir']+deps)"
 
 # sentence-transformers 모델 빌드타임 선캐싱 (콜드스타트 20-30초 제거)
 ENV SENTENCE_TRANSFORMERS_HOME=/model-cache
