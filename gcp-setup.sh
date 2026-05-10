@@ -1,21 +1,20 @@
 #!/usr/bin/env bash
 # ResearchOps Agent — GCP 프로젝트 초기 설정 스크립트
-# 실행 전: PROJECT_ID, GITHUB_REPO 변수 수정 필수
+# 프로젝트는 이미 생성됨 (researchops-agent-202605)
+# GCP Console에서 결제 활성화 후 이 스크립트 실행
 set -euo pipefail
 
-# ── 사용자 설정 변수 ──────────────────────────────────────────────
-PROJECT_ID="researchops-agent-$(date +%Y%m)"       # 예: researchops-agent-202604
-REGION="asia-northeast3"                            # 서울 리전
-GITHUB_REPO="FTinMacBook/ResearchOps-Agent"        # GitHub owner/repo
-BILLING_ACCOUNT=$(gcloud billing accounts list --format='value(name)' --limit=1)
+# ── 설정 변수 ─────────────────────────────────────────────────────
+PROJECT_ID="researchops-agent-202605"
+REGION="asia-northeast3"
+GITHUB_REPO="FTinMacBook/ResearchOps-Agent"
+SA_EMAIL="researchops-sa@${PROJECT_ID}.iam.gserviceaccount.com"
+DEPLOY_SA="github-actions-sa@${PROJECT_ID}.iam.gserviceaccount.com"
 # ─────────────────────────────────────────────────────────────────
 
-echo "=== [1/6] 프로젝트 생성 및 활성화 ==="
-gcloud projects create "${PROJECT_ID}" --name="ResearchOps Agent"
 gcloud config set project "${PROJECT_ID}"
-gcloud billing projects link "${PROJECT_ID}" --billing-account="${BILLING_ACCOUNT}"
 
-echo "=== [2/6] 필요한 API 활성화 ==="
+echo "=== [1/5] 필요한 API 활성화 ==="
 gcloud services enable \
     run.googleapis.com \
     artifactregistry.googleapis.com \
@@ -26,26 +25,26 @@ gcloud services enable \
     iam.googleapis.com \
     iamcredentials.googleapis.com
 
-echo "=== [3/6] Artifact Registry 저장소 생성 ==="
+echo "=== [2/5] Artifact Registry 저장소 생성 ==="
 gcloud artifacts repositories create researchops \
     --repository-format=docker \
     --location="${REGION}" \
-    --description="ResearchOps Agent container images"
+    --description="ResearchOps Agent container images" 2>/dev/null \
+    || echo "이미 존재함 — 건너뜀"
 
-echo "=== [4/6] Secret Manager에 GOOGLE_API_KEY 등록 ==="
-# ⚠️ 주의: 아래 명령 실행 전 실제 API 키 입력
+echo "=== [3/5] Secret Manager에 GOOGLE_API_KEY 등록 ==="
 read -rsp "GOOGLE_API_KEY 입력: " GOOGLE_API_KEY
 echo ""
 echo -n "${GOOGLE_API_KEY}" | gcloud secrets create google-api-key \
     --data-file=- \
-    --replication-policy=automatic
+    --replication-policy=automatic 2>/dev/null \
+    || echo -n "${GOOGLE_API_KEY}" | gcloud secrets versions add google-api-key --data-file=-
 unset GOOGLE_API_KEY
 
-echo "=== [5/6] 서비스 계정 생성 및 최소 권한 부여 ==="
-SA_EMAIL="researchops-sa@${PROJECT_ID}.iam.gserviceaccount.com"
-
+echo "=== [4/5] 서비스 계정 생성 및 최소 권한 부여 ==="
 gcloud iam service-accounts create researchops-sa \
-    --display-name="ResearchOps Agent Runtime SA"
+    --display-name="ResearchOps Agent Runtime SA" 2>/dev/null \
+    || echo "이미 존재함 — 건너뜀"
 
 for ROLE in \
     roles/secretmanager.secretAccessor \
@@ -53,14 +52,14 @@ for ROLE in \
     roles/monitoring.metricWriter; do
     gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
         --member="serviceAccount:${SA_EMAIL}" \
-        --role="${ROLE}"
+        --role="${ROLE}" \
+        --condition=None 2>/dev/null || true
 done
 
-echo "=== [6/6] GitHub Actions Workload Identity Federation 설정 ==="
-DEPLOY_SA="github-actions-sa@${PROJECT_ID}.iam.gserviceaccount.com"
-
+echo "=== [5/5] GitHub Actions Workload Identity Federation 설정 ==="
 gcloud iam service-accounts create github-actions-sa \
-    --display-name="GitHub Actions Deploy SA"
+    --display-name="GitHub Actions Deploy SA" 2>/dev/null \
+    || echo "이미 존재함 — 건너뜀"
 
 for ROLE in \
     roles/run.developer \
@@ -68,12 +67,14 @@ for ROLE in \
     roles/iam.serviceAccountUser; do
     gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
         --member="serviceAccount:${DEPLOY_SA}" \
-        --role="${ROLE}"
+        --role="${ROLE}" \
+        --condition=None 2>/dev/null || true
 done
 
 gcloud iam workload-identity-pools create github-pool \
     --location=global \
-    --display-name="GitHub Actions Pool"
+    --display-name="GitHub Actions Pool" 2>/dev/null \
+    || echo "이미 존재함 — 건너뜀"
 
 gcloud iam workload-identity-pools providers create-oidc github-provider \
     --location=global \
@@ -81,19 +82,23 @@ gcloud iam workload-identity-pools providers create-oidc github-provider \
     --display-name="GitHub OIDC Provider" \
     --issuer-uri="https://token.actions.githubusercontent.com" \
     --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository" \
-    --attribute-condition="assertion.repository=='${GITHUB_REPO}'"
+    --attribute-condition="assertion.repository=='${GITHUB_REPO}'" 2>/dev/null \
+    || echo "이미 존재함 — 건너뜀"
 
 WIF_POOL_ID=$(gcloud iam workload-identity-pools describe github-pool \
     --location=global --format='value(name)')
 
 gcloud iam service-accounts add-iam-policy-binding "${DEPLOY_SA}" \
     --role="roles/iam.workloadIdentityUser" \
-    --member="principalSet://iam.googleapis.com/${WIF_POOL_ID}/attribute.repository/${GITHUB_REPO}"
+    --member="principalSet://iam.googleapis.com/${WIF_POOL_ID}/attribute.repository/${GITHUB_REPO}" \
+    2>/dev/null || true
 
 WIF_PROVIDER=$(gcloud iam workload-identity-pools providers describe github-provider \
     --location=global \
     --workload-identity-pool=github-pool \
     --format='value(name)')
+
+IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/researchops/researchops-agent"
 
 echo ""
 echo "============================================================"
@@ -105,9 +110,9 @@ echo "GCP_PROJECT_ID: ${PROJECT_ID}"
 echo "GCP_REGION    : ${REGION}"
 echo "============================================================"
 echo ""
-echo "다음 단계: 첫 Cloud Run 배포 (아래 명령 실행)"
-IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/researchops/researchops-agent"
+echo "다음 단계: 첫 Cloud Run 배포"
 echo ""
+echo "  gcloud auth configure-docker ${REGION}-docker.pkg.dev"
 echo "  docker build -t ${IMAGE}:latest ."
 echo "  docker push ${IMAGE}:latest"
 echo "  gcloud run deploy researchops-agent \\"

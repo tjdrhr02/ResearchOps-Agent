@@ -11,10 +11,6 @@ COPY pyproject.toml .
 # build-system 없는 pyproject.toml 대응: tomllib(stdlib)로 의존성 추출 후 설치
 RUN python3 -c "import tomllib,subprocess,sys; deps=tomllib.load(open('pyproject.toml','rb'))['project']['dependencies']; subprocess.check_call([sys.executable,'-m','pip','install','--no-cache-dir']+deps)"
 
-# sentence-transformers 모델 빌드타임 선캐싱 (콜드스타트 20-30초 제거)
-ENV SENTENCE_TRANSFORMERS_HOME=/model-cache
-RUN python3 -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
-
 # ── Stage 2: runtime ─────────────────────────────────────────────
 FROM python:3.11-slim AS runtime
 
@@ -27,10 +23,6 @@ WORKDIR /app
 COPY --from=builder /usr/local/lib/python3.11/site-packages \
                     /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
-COPY --from=builder /model-cache /model-cache
-
-ENV SENTENCE_TRANSFORMERS_HOME=/model-cache
-
 # 소스 코드 복사
 COPY src/ ./src/
 
